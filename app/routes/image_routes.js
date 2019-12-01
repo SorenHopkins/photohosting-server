@@ -6,7 +6,7 @@ const passport = require('passport')
 const multer = require('multer')
 const upload = multer({ storage: multer.memoryStorage() })
 
-const fileUploadApi = require('../../lib/fileUploadApi')
+const fileUploadApi = require('../../lib/fileUploadAPI')
 
 // pull in Mongoose model for images
 const Image = require('../models/image')
@@ -63,18 +63,18 @@ router.get('/images/:id', requireToken, (req, res, next) => {
 // CREATE
 // POST /images
 router.post('/images', requireToken, upload.single('upload'), (req, res, next) => {
-  // set owner of new image to be current user
-  req.body.image.owner = req.user.id
-
-  Image.create(req.body.image)
-    // respond to succesful `create` with status 201 and JSON of new "image"
-    .then(image => {
-      res.status(201).json({ image: image.toObject() })
-    })
-    // if an error occurs, pass it off to our error handler
-    // the error handler needs the error message and the `res` object so that it
-    // can send an error message back to the client
-    .catch(next)
+  // // set owner of new image to be current user
+  // req.body.image.owner = req.user.id
+  //
+  // Image.create(req.body.image)
+  //   // respond to succesful `create` with status 201 and JSON of new "image"
+  //   .then(image => {
+  //     res.status(201).json({ image: image.toObject() })
+  //   })
+  //   // if an error occurs, pass it off to our error handler
+  //   // the error handler needs the error message and the `res` object so that it
+  //   // can send an error message back to the client
+  //   .catch(next)
 
   req.file.owner = req.user.id
   fileUploadApi(req.file)
@@ -83,8 +83,9 @@ router.post('/images', requireToken, upload.single('upload'), (req, res, next) =
         name: s3Response.Key,
         fileType: req.file.mimetype,
         url: s3Response.Location,
-        user: req.user
+        owner: req.user
       }
+      console.log(imageParams)
       return Image.create(imageParams)
     })
     .then(mongooseResponse =>
