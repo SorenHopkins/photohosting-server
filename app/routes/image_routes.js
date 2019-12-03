@@ -8,6 +8,8 @@ const upload = multer({ storage: multer.memoryStorage() })
 
 const fileUploadApi = require('../../lib/fileUploadAPI')
 
+const fileDeleteApi = require('../../lib/fileDeleteAPI')
+
 // pull in Mongoose model for images
 const Image = require('../models/image')
 
@@ -75,15 +77,27 @@ router.post('/images', requireToken, upload.single('upload'), (req, res, next) =
   //   // the error handler needs the error message and the `res` object so that it
   //   // can send an error message back to the client
   //   .catch(next)
-
+  console.log(req.file)
+  console.log(req.body)
   req.file.owner = req.user.id
+  req.file.s3name = Date.now() + req.file.originalname
+
+  if (req.body.favorite === 'true') {
+    req.file.storageClass = 'STANDARD'
+  } else {
+    req.file.storageClass = 'INTELLIGENT_TIERING'
+  }
+
   fileUploadApi(req.file)
     .then(s3Response => {
+      console.log(s3Response)
       const imageParams = {
-        name: s3Response.Key,
+        name: req.body.name,
         fileType: req.file.mimetype,
         url: s3Response.Location,
-        owner: req.user
+        owner: req.user,
+        favorite: req.body.favorite,
+        s3Key: s3Response.key
       }
       console.log(imageParams)
       return Image.create(imageParams)
@@ -95,25 +109,63 @@ router.post('/images', requireToken, upload.single('upload'), (req, res, next) =
 
 // UPDATE
 // PATCH /images/5a7db6c74d55bc51bdf39793
-router.patch('/images/:id', requireToken, removeBlanks, (req, res, next) => {
+router.patch('/images/:id', requireToken, upload.single('upload'), removeBlanks, (req, res, next) => {
   // if the client attempts to change the `owner` property by including a new
   // owner, prevent that by deleting that key/value pair
+  console.log(req.file)
+  console.log(req.body.image)
+
   delete req.body.image.owner
 
-  Image.findById(req.params.id)
-    .then(handle404)
-    .then(image => {
-      // pass the `req` object and the Mongoose record to `requireOwnership`
-      // it will throw an error if the current user isn't the owner
-      requireOwnership(req, image)
+  let imageParameters
 
-      // pass the result of Mongoose's `.update` to the next `.then`
-      return image.updateOne(req.body.image)
-    })
-    // if that succeeded, return 204 and no JSON
-    .then(() => res.sendStatus(204))
-    // if an error occurs, pass it to the handler
-    .catch(next)
+  if (req.file) {
+    if (req.body.favorite === 'true') {
+      req.file.storageClass = 'STANDARD'
+    } else {
+      req.file.storageClass = 'INTELLIGENT_TIERING'
+    }
+    req.file.s3name = Date.now() + req.file.originalname
+    fileUploadApi(req.file)
+      .then(s3Response => {
+        console.log(s3Response)
+        const imageParams = {
+          name: req.body.name,
+          fileType: req.file.mimetype,
+          url: s3Response.Location,
+          owner: req.user,
+          favorite: req.body.image.favorite,
+          s3Key: s3Response.key
+        }
+        imageParameters = imageParams
+        return imageParams
+      })
+      .then(imageParams => {
+        return Image.findById(req.params.id)
+      })
+      .then(image => {
+        requireOwnership(req, image)
+
+        return image.updateOne(imageParameters)
+      })
+      .then(() => res.sendStatus(204))
+      .catch(next)
+  } else {
+    Image.findById(req.params.id)
+      .then(handle404)
+      .then(image => {
+        // pass the `req` object and the Mongoose record to `requireOwnership`
+        // it will throw an error if the current user isn't the owner
+        requireOwnership(req, image)
+
+        // pass the result of Mongoose's `.update` to the next `.then`
+        return image.updateOne(req.body)
+      })
+      // if that succeeded, return 204 and no JSON
+      .then(() => res.sendStatus(204))
+      // if an error occurs, pass it to the handler
+      .catch(next)
+  }
 })
 
 // DESTROY
@@ -123,6 +175,7 @@ router.delete('/images/:id', requireToken, (req, res, next) => {
     .then(handle404)
     .then(image => {
       // throw an error if current user doesn't own `image`
+      fileDeleteApi(image.s3Key)
       requireOwnership(req, image)
       // delete the image ONLY IF the above didn't throw
       image.deleteOne()
