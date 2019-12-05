@@ -37,7 +37,7 @@ const router = express.Router()
 // INDEX
 // GET /images
 router.get('/images', requireToken, (req, res, next) => {
-  Image.find()
+  Image.find({owner: req.user._id})
     .then(images => {
       // `images` will be an array of Mongoose documents
       // we want to convert each one to a POJO, so we use `.map` to
@@ -82,7 +82,7 @@ router.post('/images', requireToken, upload.single('upload'), (req, res, next) =
   req.file.owner = req.user.id
   req.file.s3name = Date.now() + req.file.originalname
 
-  if (req.body.favorite[0] === 'true') {
+  if (req.body.bookmark === 'true') {
     req.file.storageClass = 'STANDARD'
   } else {
     req.file.storageClass = 'INTELLIGENT_TIERING'
@@ -96,7 +96,7 @@ router.post('/images', requireToken, upload.single('upload'), (req, res, next) =
         fileType: req.file.mimetype,
         url: s3Response.Location,
         owner: req.user,
-        favorite: req.body.favorite[0],
+        favorite: req.body.bookmark,
         s3Key: s3Response.key
       }
       console.log(imageParams)
@@ -120,7 +120,7 @@ router.patch('/images/:id', requireToken, upload.single('upload'), removeBlanks,
   let imageParameters
 
   if (req.file) {
-    if (req.body.favorite[0] === 'true') {
+    if (req.body.bookmark === 'true') {
       req.file.storageClass = 'STANDARD'
     } else {
       req.file.storageClass = 'INTELLIGENT_TIERING'
@@ -134,7 +134,7 @@ router.patch('/images/:id', requireToken, upload.single('upload'), removeBlanks,
           fileType: req.file.mimetype,
           url: s3Response.Location,
           owner: req.user,
-          favorite: req.body.image.favorite[0],
+          favorite: req.body.image.bookmark,
           s3Key: s3Response.key
         }
         imageParameters = imageParams
